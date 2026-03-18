@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WANICKI – Generator Raportów Maszyn</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;600;700&family=Barlow+Condensed:wght@300;600;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --green:#367C2B;--green-l:#4a9e3a;--green-bg:#f0f7ee;
+  --orange:#e07b39;--red:#cc2222;--blue:#1565c0;
+  --dark:#1a1a1a;--mid:#4a4a4a;--muted:#888;
+  --light:#f4f4f2;--white:#fff;--border:#e0e0e0;
+  --shadow:0 4px 24px rgba(0,0,0,.08);--r:12px;
+}
+body{font-family:'Barlow',sans-serif;background:#eef0eb;color:var(--dark);min-height:100vh}
+
+/* TOPBAR */
+.topbar{background:var(--dark);padding:14px 32px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(0,0,0,.3)}
+.logo{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;color:#fff;letter-spacing:1px}
+.logo span{color:var(--green)}
+.logo-sub{font-size:10px;color:#666;font-weight:300;letter-spacing:2px;text-transform:uppercase;margin-top:1px}
+.jd-pill{background:var(--green);color:#fff;font-size:10px;font-weight:700;padding:5px 14px;border-radius:20px;letter-spacing:1px;text-transform:uppercase}
+
+/* MAIN */
+.main{max-width:1100px;margin:0 auto;padding:32px 20px}
+
+/* UPLOAD */
+.upload-zone{background:var(--white);border:2.5px dashed var(--border);border-radius:var(--r);padding:44px 32px;text-align:center;cursor:pointer;transition:all .2s;margin-bottom:20px;position:relative}
+.upload-zone:hover,.upload-zone.drag{border-color:var(--green);background:var(--green-bg)}
+.upload-zone.loaded{border-color:var(--green);border-style:solid;background:var(--green-bg)}
+.upload-ico{font-size:40px;margin-bottom:12px;display:block}
+.upload-title{font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;color:var(--dark);margin-bottom:6px}
+.upload-hint{font-size:13px;color:var(--muted)}
+.file-tag{display:none;margin-top:12px;font-size:13px;font-weight:600;color:var(--green)}
+.file-tag.on{display:block}
+input[type=file]{display:none}
+
+/* BTN */
+.btn-gen{width:100%;background:var(--green);color:#fff;border:none;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:800;letter-spacing:2px;text-transform:uppercase;padding:17px;border-radius:var(--r);transition:all .2s;display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:16px;box-shadow:0 4px 18px rgba(54,124,43,.3)}
+.btn-gen:hover:not(:disabled){background:var(--green-l);transform:translateY(-2px);box-shadow:0 6px 24px rgba(54,124,43,.4)}
+.btn-gen:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.spin{width:18px;height:18px;border:2.5px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:none}
+.btn-gen.loading .spin{display:block}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* STATUS */
+.status-bar{padding:12px 18px;border-radius:8px;font-size:14px;font-weight:600;margin-bottom:16px;display:none;border:1.5px solid}
+.status-bar.show{display:block}
+.s-ok{background:#e8f5e9;color:#2e7d32;border-color:#a5d6a7}
+.s-err{background:#ffebee;color:#c62828;border-color:#ef9a9a}
+.s-info{background:#e3f2fd;color:#1565c0;border-color:#90caf9}
+
+/* DASHBOARD */
+#dash{display:none}
+#dash.on{display:block;animation:fadeUp .4s ease}
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+
+.sec-label{font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:var(--muted);margin-bottom:12px;margin-top:24px;border-left:3px solid var(--green);padding-left:10px}
+
+/* MACHINE CARD */
+.mcard{background:var(--white);border-radius:var(--r);padding:22px 26px;box-shadow:var(--shadow);display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap;margin-bottom:4px}
+.mcard h2{font-family:'Barlow Condensed',sans-serif;font-size:30px;font-weight:800;line-height:1}
+.mcard .org{font-size:12px;color:var(--muted);margin-top:3px}
+.tags{display:flex;gap:7px;margin-top:9px;flex-wrap:wrap}
+.tag{font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;background:var(--light);color:var(--mid)}
+.tag.g{background:#e8f5e9;color:var(--green)}
+.mright{margin-left:auto;text-align:right}
+.mright .per{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+.mright .dt{font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700}
+
+/* ALERTS */
+.alerts{display:flex;flex-direction:column;gap:8px;margin-bottom:4px}
+.alert{display:flex;align-items:flex-start;gap:10px;padding:11px 15px;border-radius:8px;font-size:13px;border-left:4px solid}
+.a-ok{background:#f1faf1;border-color:var(--green)}
+.a-warn{background:#fff8f0;border-color:var(--orange)}
+.a-bad{background:#fff1f1;border-color:var(--red)}
+.alert b{display:block;margin-bottom:1px}
+
+/* KPI GRID */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:13px;margin-bottom:4px}
+.kpi{background:var(--white);border-radius:var(--r);padding:16px 18px;box-shadow:var(--shadow);border-top:3px solid transparent;transition:transform .2s}
+.kpi:hover{transform:translateY(-2px)}
+.kpi.g{border-top-color:var(--green)}.kpi.o{border-top-color:var(--orange)}.kpi.b{border-top-color:var(--blue)}.kpi.r{border-top-color:var(--red)}
+.kpi-lbl{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:5px}
+.kpi-val{font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:800;line-height:1}
+.kpi-val.g{color:var(--green)}.kpi-val.o{color:var(--orange)}.kpi-val.r{color:var(--red)}
+.kpi-sub{font-size:11px;color:var(--muted);margin-top:3px}
+
+/* 2-col */
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:4px}
+@media(max-width:680px){.row2{grid-template-columns:1fr}}
+.card{background:var(--white);border-radius:var(--r);padding:20px 22px;box-shadow:var(--shadow)}
+.card-t{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
+
+/* DONUT */
+.donut-wrap{display:flex;align-items:center;gap:18px}
+.donut{width:96px;height:96px;border-radius:50%;flex-shrink:0;position:relative}
+.donut::after{content:'';position:absolute;inset:20px;background:#fff;border-radius:50%}
+.leg-item{display:flex;align-items:center;gap:7px;margin-bottom:7px;font-size:12px}
+.leg-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.leg-lbl{flex:1;color:var(--mid)}
+.leg-v{font-weight:700}
+.leg-p{font-size:10px;color:var(--muted);margin-left:3px}
+
+/* BAR LIST */
+.bar-list{display:flex;flex-direction:column;gap:9px}
+.bar-hd{display:flex;justify-content:space-between;margin-bottom:3px;font-size:12px}
+.bar-track{height:7px;background:var(--light);border-radius:4px;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px;background:var(--green);transition:width .6s cubic-bezier(.4,0,.2,1)}
+.bar-fill.o{background:var(--orange)}.bar-fill.r{background:var(--red)}.bar-fill.b{background:var(--blue)}
+
+/* STATUS TABLE */
+.stbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.stbl th{text-align:left;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);padding:5px 7px;border-bottom:1.5px solid var(--border)}
+.stbl td{padding:8px 7px;border-bottom:1px solid #f0f0f0}
+.stbl tr:last-child td{border-bottom:none}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px}
+.b-ok{background:#e8f5e9;color:var(--green)}.b-warn{background:#fff3e0;color:#e65100}.b-bad{background:#ffebee;color:var(--red)}.b-info{background:#e3f2fd;color:var(--blue)}
+
+/* TEMP GRID */
+.temp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.temp-cell{text-align:center;padding:12px 8px;background:var(--light);border-radius:8px}
+.temp-lbl{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px}
+.temp-v{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800}
+.temp-v.ok{color:var(--green)}.temp-v.bad{color:var(--red)}
+.temp-n{font-size:9px;color:var(--muted);margin-top:2px}
+
+/* SLIP */
+.slip-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.slip-cell{background:var(--light);border-radius:8px;padding:11px 13px}
+.slip-lvl{font-size:10px;font-weight:700;color:var(--mid);margin-bottom:4px}
+.slip-v{font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:800}
+.slip-p{font-size:10px;color:var(--muted);margin-left:4px}
+
+/* SCATTER */
+.scatter{position:relative;height:180px;border:1px solid var(--border);border-radius:8px;background:#fafffe;overflow:hidden;margin-top:10px}
+.sc-win{position:absolute;background:rgba(54,124,43,.08);border:1px dashed rgba(54,124,43,.35)}
+.sc-dot{position:absolute;width:13px;height:13px;border-radius:50%;transform:translate(-50%,-50%);transition:all .6s}
+.sc-lbl{position:absolute;font-size:9px;color:#bbb}
+
+footer{background:var(--dark);color:#555;text-align:center;padding:18px;font-size:12px;margin-top:40px}
+footer span{color:var(--green)}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <div class="logo"><span>W</span>ANICKI</div>
+    <div class="logo-sub">Generator raportów maszyn</div>
+  </div>
+  <div class="jd-pill">John Deere Operations Center</div>
+</div>
+
+<div class="main">
+
+  <div class="upload-zone" id="dropzone" onclick="document.getElementById('fi').click()">
+    <span class="upload-ico">📊</span>
+    <div class="upload-title">Wrzuć plik Excel z danymi maszyny</div>
+    <div class="upload-hint">Kliknij lub przeciągnij plik .xlsx tutaj</div>
+    <div class="file-tag" id="ftag"></div>
+    <input type="file" id="fi" accept=".xlsx">
+  </div>
+
+  <div class="status-bar" id="statusBar"></div>
+
+  <button class="btn-gen" id="btnGen" disabled onclick="generatePDF()">
+    <div class="spin" id="spin"></div>
+    <span id="btnTxt">📄 GENERUJ PDF</span>
+  </button>
+
+  <div id="dash">
+    <div class="sec-label">Dane maszyny</div>
+    <div class="mcard" id="mcard"></div>
+
+    <div class="sec-label">Alerty</div>
+    <div class="alerts" id="alertsBox"></div>
+
+    <div class="sec-label">Kluczowe wskaźniki</div>
+    <div class="kpi-grid" id="kpiGrid"></div>
+
+    <div class="sec-label">Wykorzystanie i paliwo</div>
+    <div class="row2">
+      <div class="card">
+        <div class="card-t">Wykorzystanie wg stanu</div>
+        <div class="donut-wrap">
+          <div class="donut" id="donut"></div>
+          <div id="legend"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-t">Średnie zużycie paliwa (l/godz.)</div>
+        <div class="bar-list" id="fuelBars"></div>
+      </div>
+    </div>
+
+    <div class="sec-label">Silnik i StarFire™</div>
+    <div class="row2">
+      <div class="card">
+        <div class="card-t">Obciążenie silnika</div>
+        <table class="stbl" id="loadTbl"></table>
+        <div class="card-t" style="margin-top:14px">Efektywność energetyczna</div>
+        <div class="scatter" id="scatter"></div>
+      </div>
+      <div class="card">
+        <div class="card-t">Dokładność StarFire™ (godz.)</div>
+        <div class="bar-list" id="sfBars"></div>
+      </div>
+    </div>
+
+    <div class="sec-label">Temperatury i poślizg</div>
+    <div class="row2">
+      <div class="card">
+        <div class="card-t">Temperatury płynów (°C)</div>
+        <div class="temp-grid" id="tempGrid"></div>
+      </div>
+      <div class="card">
+        <div class="card-t">Poślizg kół (godz.)</div>
+        <div class="slip-grid" id="slipGrid"></div>
+      </div>
+    </div>
+
+    <div class="sec-label">Status spalania wg norm</div>
+    <div class="card" style="margin-bottom:8px">
+      <table class="stbl" id="fuelTbl"></table>
+    </div>
+  </div>
+
+</div>
+
+<footer>napędzamy Twój <span>rozwój!</span> &nbsp;•&nbsp; WANICKI &nbsp;•&nbsp; Powered by John Deere Operations Center</footer>
+
+<script>
+// ── globals ──────────────────────────────────────────────────────────────────
+let D = null; // parsed data object
+
+// ── file handling ─────────────────────────────────────────────────────────────
+const dz = document.getElementById('dropzone');
+const fi = document.getElementById('fi');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag'); const f=e.dataTransfer.files[0]; if(f) handleFile(f); });
+fi.addEventListener('change', e => { if(e.target.files[0]) handleFile(e.target.files[0]); });
+
+function handleFile(file) {
+  if (!file.name.endsWith('.xlsx')) { showStatus('Proszę wybrać plik .xlsx', 'err'); return; }
+  const ftag = document.getElementById('ftag');
+  ftag.textContent = '📎 ' + file.name;
+  ftag.classList.add('on');
+  dz.classList.add('loaded');
+  showStatus('⏳ Wczytuję dane...', 'info');
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const ws = wb.Sheets['Eksport'];
+      if (!ws) throw new Error('Nie znaleziono arkusza "Eksport"');
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      D = parseData(rows);
+      renderDashboard(D);
+      document.getElementById('btnGen').disabled = false;
+      showStatus('✅ Dane wczytane — możesz generować PDF', 'ok');
+    } catch(err) {
+      showStatus('❌ Błąd: ' + err.message, 'err');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function parseData(rows) {
+  const headers = rows[0];
+  const vals    = rows[1];
+  const rangeR  = rows[2];
+  const recR    = rows[3];
+  const data = {}, rng = {}, rec = {};
+  headers.forEach((h, i) => {
+    data[h] = vals[i];
+    rng[h]  = rangeR ? rangeR[i] : null;
+    rec[h]  = recR   ? recR[i]   : null;
+  });
+
+  const flt = (k, def=0) => { const v = parseFloat(data[k]); return isNaN(v) ? def : v; };
+
+  const idle_h  = flt('Wykorzystanie Bezczynność (godz.)');
+  const work_h  = flt('Wykorzystanie Praca (godz.)');
+  const trans_h = flt('Wykorzystanie Transport (godz.)');
+  const total_h = idle_h + work_h + trans_h;
+  const fuel_idle  = flt('Średnie zużycie paliwa Bezczynność (l/godz.)');
+  const spd_trans  = flt('Śr. prędkość postępowa Transport (km/h)');
+  const fuel_trans = flt('Średnie zużycie paliwa Transport (l/godz.)');
+
+  return {
+    machine: {
+      model:  String(data['Model'] || ''),
+      type:   String(data['Typ'] || ''),
+      serial: String(data['Numer seryjny maszyny'] || ''),
+      org:    String(data['Organizacja'] || ''),
+      org_id: String(data['ID organizacji'] || ''),
+      date_s: String(data['Data początkowa'] || ''),
+      date_e: String(data['Data końcowa'] || ''),
+    },
+    util: {
+      idle_h, work_h, trans_h, total_h,
+      idle_p:  total_h ? +(idle_h/total_h*100).toFixed(1)  : 0,
+      work_p:  total_h ? +(work_h/total_h*100).toFixed(1)  : 0,
+      trans_p: total_h ? +(trans_h/total_h*100).toFixed(1) : 0,
+      idle_cost: +(fuel_idle * idle_h * 5.50).toFixed(0),
+    },
+    fuel: {
+      idle:  flt('Średnie zużycie paliwa Bezczynność (l/godz.)'),
+      work:  flt('Średnie zużycie paliwa Praca (l/godz.)'),
+      trans: fuel_trans,
+      per:   flt('Średnie zużycie paliwa Okres (l/godz.)'),
+    },
+    load: {
+      idle:  flt('Średni współczynnik obciążenia silnika Bezczynność (%)'),
+      work:  flt('Średni współczynnik obciążenia silnika Praca (%)'),
+      trans: flt('Średni współczynnik obciążenia silnika Transport (%)'),
+    },
+    autotrac: {
+      pct: flt('AutoTrac™ Aktywny (%)') * 100,
+      on:  flt('AutoTrac™ Aktywny (godz.)'),
+      off: flt('AutoTrac™ Nieaktywny (godz.)'),
+    },
+    def: {
+      total: flt('Zużyty płyn DEF Okres (l)'),
+      rate:  flt('Średnie zużycie DEF Okres (l/godz.)'),
+      level: flt('Poziom w zbiorniku DEF (%)') * 100,
+    },
+    temps: {
+      cool_avg: flt('Śr. temp. płynu chłodzącego Okres (°C)'),
+      cool_max: flt('Maksymalna temp. płynu chłodzącego Okres (°C)'),
+      hyd_avg:  flt('Średnia temp. oleju hydraulicznego Okres (°C)'),
+      hyd_max:  flt('Maksymalna temp. oleju hydraulicznego Okres (°C)'),
+      gear_avg: flt('Średnia temp. oleju przekładniowego Okres (°C)'),
+      gear_max: flt('Maksymalna temp. oleju przekładniowego Okres (°C)'),
+    },
+    speed: {
+      work:  flt('Śr. prędkość postępowa Praca (km/h)'),
+      trans: spd_trans,
+      fuel10: spd_trans > 0 ? +(fuel_trans/spd_trans*10).toFixed(1) : 0,
+    },
+    slip: {
+      s201:  flt('Czas poślizgu kół na poziomie 2,01–4,00% (godz.)'),
+      s401:  flt('Czas poślizgu kół na poziomie 4,01–6,00% (godz.)') + flt('Czas poślizgu kół na poziomie 6,01–8,00% (godz.)'),
+      s801:  flt('Czas poślizgu kół na poziomie 8,01-10,00% (godz.)') + flt('Czas poślizgu kół na poziomie 10,01–12,00% (godz.)') + flt('Czas poślizgu kół na poziomie 12,01–14,00% (godz.)') + flt('Czas poślizgu kół na poziomie 14,01–16,00% (godz.)') + flt('Czas poślizgu kół na poziomie 16,01–18,00% (godz.)'),
+      s1801: flt('Czas poślizgu kół na poziomie 18,01–100,00% (godz.)'),
+    },
+    sf: [
+      flt('Dokładność odbiornika StarFire™ maszyny Poniżej 50% (godz.)'),
+      flt('Dokładność odbiornika StarFire™ maszyny 50-80% (godz.)'),
+      flt('Dokładność odbiornika StarFire™ maszyny 80-90% (godz.)'),
+      flt('Dokładność odbiornika StarFire™ maszyny 90-99% (godz.)'),
+      flt('Dokładność odbiornika StarFire™ maszyny 100% (godz.)'),
+    ],
+  };
+}
+
+// ── render dashboard ──────────────────────────────────────────────────────────
+function renderDashboard(d) {
+  document.getElementById('dash').classList.add('on');
+  renderMachine(d.machine);
+  renderAlerts(d);
+  renderKPIs(d);
+  renderDonut(d.util);
+  renderFuelBars(d.fuel);
+  renderLoadTable(d.load);
+  renderScatter(d.load.work, d.fuel.work);
+  renderSF(d.sf);
+  renderTemps(d.temps);
+  renderSlip(d.slip);
+  renderFuelTable(d.fuel);
+}
+
+function renderMachine(m) {
+  document.getElementById('mcard').innerHTML = `
+    <div style="flex:1">
+      <h2>${m.model}</h2>
+      <div class="org">${m.org}</div>
+      <div class="tags">
+        <span class="tag g">${m.type}</span>
+        <span class="tag">${m.serial}</span>
+        <span class="tag">ID: ${Number(m.org_id).toLocaleString('pl') || m.org_id}</span>
+      </div>
+    </div>
+    <div class="mright">
+      <div class="per">Okres raportowania</div>
+      <div class="dt">${m.date_s}</div>
+      <div class="dt" style="color:#888">→ ${m.date_e}</div>
+    </div>`;
+}
+
+function renderAlerts(d) {
+  const al = [];
+  if (d.util.idle_p > 25) al.push({c:'a-warn',i:'⚠️',t:'Wysoki poziom bezczynności',m:`${d.util.idle_p}% czasu — koszt: ${Number(d.util.idle_cost).toLocaleString('pl')} zł`});
+  if (d.def.level < 20)   al.push({c:'a-bad', i:'🔴',t:'Niski poziom DEF',m:`${d.def.level.toFixed(1)}% — należy uzupełnić!`});
+  if (d.temps.gear_max > 70) al.push({c:'a-bad',i:'🌡️',t:'Temperatura oleju przekładniowego poza normą',m:`Maks: ${d.temps.gear_max}°C (norma ≤70°C)`});
+  if (d.load.work < 0.60) al.push({c:'a-warn',i:'⚙️',t:'Zbyt niskie obciążenie silnika w pracy',m:`${(d.load.work*100).toFixed(1)}% — optimum 60–80%`});
+  if (!al.length) al.push({c:'a-ok',i:'✅',t:'Wszystkie parametry w normie',m:'Nie wykryto nieprawidłowości.'});
+  document.getElementById('alertsBox').innerHTML = al.map(a=>`
+    <div class="alert ${a.c}"><span style="font-size:16px">${a.i}</span><div><b>${a.t}</b>${a.m}</div></div>`).join('');
+}
+
+function renderKPIs(d) {
+  const kpis = [
+    {l:'Czas całkowity', v:d.util.total_h.toFixed(1), s:'godz.', c:'g'},
+    {l:'Czas pracy',     v:d.util.work_h.toFixed(1),  s:`godz. (${d.util.work_p}%)`, c:'g'},
+    {l:'Bezczynność',   v:d.util.idle_h.toFixed(1),   s:`godz. (${d.util.idle_p}%)`, c:d.util.idle_p>25?'o':'g'},
+    {l:'Koszt bezczyności', v:Number(d.util.idle_cost).toLocaleString('pl'), s:'zł', c:'o', vc:'o'},
+    {l:'AutoTrac™',     v:d.autotrac.pct.toFixed(1),  s:'% aktywny', c:d.autotrac.pct<50?'o':'g'},
+    {l:'Zużycie DEF',   v:d.def.total.toFixed(1),     s:'l łącznie', c:'b'},
+    {l:'Poziom DEF',    v:d.def.level.toFixed(1),     s:'%', c:d.def.level<20?'r':'g', vc:d.def.level<20?'r':''},
+    {l:'Prędkość pracy',v:d.speed.work.toFixed(1),    s:'km/h', c:'b'},
+  ];
+  document.getElementById('kpiGrid').innerHTML = kpis.map(k=>`
+    <div class="kpi ${k.c}">
+      <div class="kpi-lbl">${k.l}</div>
+      <div class="kpi-val ${k.vc||''}">${k.v}</div>
+      <div class="kpi-sub">${k.s}</div>
+    </div>`).join('');
+}
+
+function renderDonut(u) {
+  const wp=u.work_p, ip=u.idle_p, tp=u.trans_p;
+  document.getElementById('donut').style.background =
+    `conic-gradient(#367C2B 0% ${wp}%, #e07b39 ${wp}% ${wp+ip}%, #9e9e9e ${wp+ip}% 100%)`;
+  document.getElementById('legend').innerHTML = [
+    {c:'#367C2B',l:'Praca',      h:u.work_h,  p:u.work_p},
+    {c:'#e07b39',l:'Bezczynność',h:u.idle_h,  p:u.idle_p},
+    {c:'#9e9e9e',l:'Transport',  h:u.trans_h, p:u.trans_p},
+  ].map(i=>`<div class="leg-item"><div class="leg-dot" style="background:${i.c}"></div>
+    <div class="leg-lbl">${i.l}</div><div class="leg-v">${i.h.toFixed(1)}h</div>
+    <div class="leg-p">${i.p}%</div></div>`).join('');
+}
+
+function renderFuelBars(f) {
+  const items=[{l:'Transport',v:f.trans,hi:30},{l:'Praca',v:f.work,hi:50},{l:'Okres',v:f.per,hi:30},{l:'Bezczynność',v:f.idle,hi:7}];
+  const mx = Math.max(...items.map(i=>i.v),1);
+  document.getElementById('fuelBars').innerHTML = items.map(i=>{
+    const over = i.v > i.hi;
+    return `<div><div class="bar-hd"><span style="color:#4a4a4a">${i.l}</span>
+      <span style="font-weight:700">${i.v.toFixed(2)} l/h <span style="font-size:10px;color:${over?'#cc2222':'#367C2B'}">${over?'⬆':'✓'}</span></span></div>
+      <div class="bar-track"><div class="bar-fill ${over?'r':''}" style="width:${i.v/mx*100}%"></div></div></div>`;
+  }).join('');
+}
+
+function renderLoadTable(l) {
+  const st = v => v>=.6&&v<=.8 ? ['b-ok','✅ Optymalne'] : v<.6 ? ['b-info','⬇ Poniżej'] : ['b-warn','⬆ Powyżej'];
+  document.getElementById('loadTbl').innerHTML =
+    `<tr><th>Stan</th><th>Obciążenie</th><th>Status</th></tr>` +
+    [['Bezczynność',l.idle],['Praca',l.work],['Transport',l.trans]].map(([n,v])=>{
+      const [c,lbl]=st(v);
+      return `<tr><td>${n}</td><td><b>${v.toFixed(3)}</b></td><td><span class="badge ${c}">${lbl}</span></td></tr>`;
+    }).join('');
+}
+
+function renderScatter(load, fuel) {
+  const el = document.getElementById('scatter');
+  el.innerHTML = '';
+  const W=el.clientWidth||280, H=180;
+  const pad={l:36,r:16,t:16,b:24};
+  const iW=W-pad.l-pad.r, iH=H-pad.t-pad.b;
+  const toX=v=>pad.l+v*iW, toY=v=>pad.t+(1-v/50)*iH;
+
+  const win=document.createElement('div'); win.className='sc-win';
+  const wL=toX(.6),wW=(0.2)*iW,wT=toY(50),wH=toY(1)-toY(50);
+  Object.assign(win.style,{left:wL+'px',top:wT+'px',width:wW+'px',height:wH+'px'});
+  el.appendChild(win);
+
+  const dot=document.createElement('div'); dot.className='sc-dot';
+  const inW=load>=.6&&load<=.8&&fuel>=1&&fuel<=50;
+  Object.assign(dot.style,{left:toX(Math.min(Math.max(load,0),1))+'px',top:toY(Math.min(Math.max(fuel,0),50))+'px',
+    background:inW?'#367C2B':'#e07b39',boxShadow:`0 0 8px ${inW?'rgba(54,124,43,.5)':'rgba(224,123,57,.5)'}`});
+  el.appendChild(dot);
+
+  ['0.0','0.5','1.0'].forEach((t,i)=>{
+    const l=document.createElement('div'); l.className='sc-lbl';
+    l.textContent=t; Object.assign(l.style,{bottom:'4px',left:(pad.l+i*iW/2-6)+'px'});
+    el.appendChild(l);
+  });
+  const ax=document.createElement('div'); ax.className='sc-lbl';
+  ax.textContent='Obciążenie'; Object.assign(ax.style,{bottom:'4px',left:'50%',transform:'translateX(-50%)',color:'#aaa'});
+}
+
+function renderSF(sf) {
+  const labels=['< 50%','50-80%','80-90%','90-99%','100%'];
+  const mx=Math.max(...sf,1);
+  document.getElementById('sfBars').innerHTML = labels.map((l,i)=>`
+    <div><div class="bar-hd"><span style="color:#4a4a4a">${l}</span><span style="font-weight:700">${sf[i].toFixed(1)} h</span></div>
+    <div class="bar-track"><div class="bar-fill" style="width:${sf[i]/mx*100}%;background:${i===4?'#367C2B':i===3?'#5aab4a':'#9e9e9e'}"></div></div></div>`).join('');
+}
+
+function renderTemps(t) {
+  const items=[
+    {l:'Chłodniczy (śr)',v:t.cool_avg,lo:80,hi:105},
+    {l:'Chłodniczy (max)',v:t.cool_max,lo:85,hi:105},
+    {l:'Hydraul. (śr)',v:t.hyd_avg,lo:30,hi:95},
+    {l:'Hydraul. (max)',v:t.hyd_max,lo:70,hi:95},
+    {l:'Przekładn. (śr)',v:t.gear_avg,lo:40,hi:60},
+    {l:'Przekładn. (max)',v:t.gear_max,lo:50,hi:70},
+  ];
+  document.getElementById('tempGrid').innerHTML=items.map(i=>{
+    const ok=i.v>=i.lo&&i.v<=i.hi;
+    return `<div class="temp-cell"><div class="temp-lbl">${i.l}</div>
+      <div class="temp-v ${ok?'ok':'bad'}">${i.v.toFixed(1)}°</div>
+      <div class="temp-n">${i.lo}–${i.hi}°C</div></div>`;
+  }).join('');
+}
+
+function renderSlip(s) {
+  const tot=s.s201+s.s401+s.s801+s.s1801||1;
+  const pct=v=>(v/tot*100).toFixed(1);
+  [['2,01–4,00%',s.s201],['4,01–8,00%',s.s401],['8,01–18,00%',s.s801],['18,01–100%',s.s1801]].forEach(([l,v],i)=>{
+    document.getElementById('slipGrid').innerHTML += `
+      <div class="slip-cell"><div class="slip-lvl">${l}</div>
+      <div class="slip-v">${v.toFixed(1)}h<span class="slip-p">${pct(v)}%</span></div></div>`;
+  });
+}
+
+function renderFuelTable(f) {
+  const rows=[{n:'Bezczynność',v:f.idle,lo:1,hi:7},{n:'Okres',v:f.per,lo:1,hi:30},{n:'Praca',v:f.work,lo:1,hi:50},{n:'Transport',v:f.trans,lo:1,hi:30}];
+  const badge=v=>v>=1&&v<=30?'<span class="badge b-ok">✅ W normie</span>':v>30?'<span class="badge b-bad">⬆ Poza normą</span>':'<span class="badge b-info">⬇ Poniżej</span>';
+  document.getElementById('fuelTbl').innerHTML=`<tr><th>Stan pracy</th><th>Min</th><th>Średnie spalanie</th><th>Max</th><th>Status</th></tr>`+
+    rows.map(r=>`<tr><td>${r.n}</td><td>${r.lo} l/h</td><td><b>${r.v.toFixed(2)} l/h</b></td><td>${r.hi} l/h</td><td>${badge(r.v)}</td></tr>`).join('');
+}
+
+// ── status helper ─────────────────────────────────────────────────────────────
+function showStatus(msg, type) {
+  const el = document.getElementById('statusBar');
+  el.textContent = msg;
+  el.className = 'status-bar show ' + (type==='ok'?'s-ok':type==='err'?'s-err':'s-info');
+  if (type==='ok') setTimeout(()=>el.classList.remove('show'), 4000);
+}
+
+// ── PDF generation (jsPDF) ────────────────────────────────────────────────────
+async function generatePDF() {
+  if (!D) return;
+  const btn=document.getElementById('btnGen');
+  const spin=document.getElementById('spin');
+  const txt=document.getElementById('btnTxt');
+  btn.disabled=true; spin.style.display='block'; txt.textContent=' Generowanie...';
+  showStatus('⏳ Generuję PDF...', 'info');
+
+  await new Promise(r=>setTimeout(r,50));
+
+  try {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+    const W=210, H=297;
+    const m=15; // margin
+    const cw=W-2*m; // content width
+    let y=m;
+
+    const green=[54,124,43], dark=[26,26,26], mid=[74,74,74], light=[244,244,242], orange=[224,123,57], red=[204,34,34];
+
+    // ── helper: text ──
+    const txt2=(t,x,yy,sz,col,align='left',bold=false)=>{
+      doc.setFontSize(sz);
+      doc.setTextColor(...col);
+      doc.setFont('helvetica', bold?'bold':'normal');
+      doc.text(String(t), x, yy, {align});
+    };
+
+    const fillRect=(x,yy,w,h,col)=>{ doc.setFillColor(...col); doc.rect(x,yy,w,h,'F'); };
+    const line=(x1,y1,x2,y2,col,lw=0.3)=>{ doc.setDrawColor(...col); doc.setLineWidth(lw); doc.line(x1,y1,x2,y2); };
+
+    // ━━ PAGE 1: COVER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    fillRect(0,0,W,H,[255,255,255]);
+
+    // decorative grey arcs (right side)
+    doc.setDrawColor(220,220,220); doc.setLineWidth(0.4);
+    for(let i=0;i<8;i++){
+      const r=30+i*12;
+      doc.circle(W+10, 60, r, 'S');
+    }
+
+    // WANICKI logo text
+    doc.setFontSize(28); doc.setTextColor(...dark); doc.setFont('helvetica','bold');
+    doc.text('WANICKI', m, 45);
+    fillRect(m, 48, 55, 0.8, dark);
+
+    // Title
+    y=85;
+    doc.setFontSize(38); doc.setFont('helvetica','bold'); doc.setTextColor(...dark);
+    ['RAPORT','WYKORZYSTANIA','MASZYNY'].forEach(line2=>{ doc.text(line2,m,y); y+=18; });
+
+    // John Deere badge
+    y+=20;
+    txt2('Opracowano na podstawie:', m, y, 10, green);
+    y+=8;
+    fillRect(m, y, 40, 14, green);
+    txt2('JOHN DEERE', m+4, y+5.5, 9, [255,255,255], 'left', true);
+    txt2('OPERATIONS CENTER', m+4, y+10, 6.5, [255,255,255]);
+
+    // footer bar
+    fillRect(0, H-16, W, 16, [74,74,74]);
+    txt2('→  napędzamy Twój rozwój!', m, H-7, 9, [255,255,255]);
+    txt2('WANICKI', W-m, H-7, 10, [255,255,255], 'right', true);
+
+    // ━━ PAGE 2: OVERVIEW ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    doc.addPage();
+    fillRect(0,0,W,H,[255,255,255]);
+    y=m;
+
+    // Header
+    txt2('WANICKI', m, y+5, 12, dark, 'left', true);
+    const org = D.machine.org.substring(0,60);
+    txt2(org, W/2, y+5, 9, dark, 'center', true);
+    txt2('⬤', W-m, y+5, 14, green, 'right');
+    y+=10; line(m,y,W-m,y,[220,220,220]);
+    y+=6;
+
+    // Machine info row
+    const infoCols=[
+      [D.machine.model,'Model'],
+      [D.machine.type,'Typ maszyny'],
+      [D.machine.serial,'Numer seryjny'],
+      [D.machine.org_id,'ID Organizacji'],
+    ];
+    infoCols.forEach(([v,l],i)=>{
+      const x=m+i*cw/4+cw/8;
+      txt2(v,x,y+5,10,dark,'center',true);
+      txt2(l,x,y+10,7,mid,'center');
+    });
+    y+=16; line(m,y,W-m,y,[220,220,220]); y+=6;
+
+    // Dates
+    txt2(D.machine.date_s, W/4, y+5, 11, dark, 'center', true);
+    txt2('Data początkowa', W/4, y+10, 7, mid, 'center');
+    txt2(D.machine.date_e, 3*W/4, y+5, 11, dark, 'center', true);
+    txt2('Data końcowa', 3*W/4, y+10, 7, mid, 'center');
+    y+=18; line(m,y,W-m,y,[220,220,220]); y+=6;
+
+    // Utilisation pie (manual arcs)
+    const cx=m+30, cy=y+28, cr=22;
+    const u=D.util;
+    const drawPie=(cx,cy,r,pcts,cols)=>{
+      let ang=-Math.PI/2;
+      pcts.forEach((p,i)=>{
+        const sweep=p/100*2*Math.PI;
+        if(sweep<0.01) return;
+        doc.setFillColor(...cols[i]);
+        // approximate with polygon
+        const pts=[];
+        pts.push([cx,cy]);
+        for(let a=ang;a<=ang+sweep;a+=0.05) pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);
+        pts.push([cx,cy]);
+        doc.setDrawColor(...cols[i]);
+        doc.triangle(cx,cy,pts[1][0],pts[1][1],pts[Math.floor(pts.length/2)][0],pts[Math.floor(pts.length/2)][1],'F');
+        // fill arc properly
+        doc.setFillColor(...cols[i]);
+        const path=[];
+        for(let a=ang;a<=ang+sweep+0.05;a+=0.05){
+          path.push([cx+r*Math.cos(Math.min(a,ang+sweep)),cy+r*Math.sin(Math.min(a,ang+sweep))]);
+        }
+        ang+=sweep;
+      });
+      // white center
+      doc.setFillColor(255,255,255);
+      doc.circle(cx,cy,r*0.55,'F');
+    };
+    drawPie(cx,cy,cr,[u.work_p,u.idle_p,u.trans_p],[[54,124,43],[224,123,57],[158,158,158]]);
+
+    txt2('Wykorzystanie wg stanu (%)', m, y, 8, mid);
+    y+=4;
+    [[54,124,43],'Praca',u.work_p,u.work_h],
+    [[224,123,57],'Bezczynność',u.idle_p,u.idle_h],
+    [[158,158,158],'Transport',u.trans_p,u.trans_h]
+    ; // legend
+    const legX=m+58, legY=y+4;
+    [[[54,124,43],'Praca',u.work_p,u.work_h],
+     [[224,123,57],'Bezczynność',u.idle_p,u.idle_h],
+     [[158,158,158],'Transport',u.trans_p,u.trans_h]
+    ].forEach(([col,lbl,pct,h],i)=>{
+      fillRect(legX, legY+i*7, 5, 5, col);
+      txt2(lbl, legX+7, legY+i*7+4, 8, dark);
+      txt2(`${h.toFixed(1)}h  ${pct}%`, legX+32, legY+i*7+4, 8, mid);
+    });
+
+    // Big numbers right side
+    const rx=W/2+10;
+    txt2(`${Number(u.idle_cost).toLocaleString('pl')} zł`, rx+cw/4, y+10, 20, orange, 'center', true);
+    txt2('Koszt Bezczynności* (5,50 zł / l)', rx+cw/4, y+16, 7, mid, 'center');
+    txt2(`${u.total_h.toFixed(1)} godz.`, rx+cw/4, y+26, 14, dark, 'center', true);
+    txt2('Wykorzystanie Ogółem', rx+cw/4, y+31, 7, mid, 'center');
+
+    y+=60;
+
+    // AutoTrac
+    txt2(`AutoTrac™ Aktywny: ${D.autotrac.pct.toFixed(1)}%`, m, y, 9, green, 'left', true);
+    y+=8;
+
+    // ━━ PAGE 3: FUEL ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    doc.addPage(); fillRect(0,0,W,H,[255,255,255]);
+    txt2('WANICKI', W-m, m+5, 12, dark, 'right', true);
+    y=m+12;
+
+    // Fuel norm table
+    txt2('Paliwo i Obciążenie wg Stanu', m, y, 10, dark, 'left', true); y+=6;
+    const fuelRows=[
+      ['Bezczynność','1 l/godz.',`${D.fuel.idle.toFixed(2)} l/godz.`,'7 l/godz.', D.fuel.idle<=7?'W normie':'Poza normą', D.fuel.idle<=7],
+      ['Okres',      '1 l/godz.',`${D.fuel.per.toFixed(2)} l/godz.`, '30 l/godz.',D.fuel.per<=30?'W normie':'Poza normą', D.fuel.per<=30],
+      ['Praca',      '1 l/godz.',`${D.fuel.work.toFixed(2)} l/godz.`,'50 l/godz.',D.fuel.work<=50?'W normie':'Poza normą', D.fuel.work<=50],
+      ['Transport',  '1 l/godz.',`${D.fuel.trans.toFixed(2)} l/godz.`,'30 l/godz.',D.fuel.trans<=30?'W normie':'Poza normą', D.fuel.trans<=30],
+    ];
+    doc.autoTable({
+      head:[['Stan pracy','Min','Średnie spalanie','Max (l/godz.)','Status','']],
+      body: fuelRows.map(r=>[r[0],r[1],r[2],r[3],r[4],r[5]?'✅':'⬆️']),
+      startY: y, margin:{left:m,right:m},
+      styles:{fontSize:8,cellPadding:3},
+      headStyles:{fillColor:dark, textColor:[255,255,255], fontStyle:'bold'},
+      alternateRowStyles:{fillColor:light},
+      didParseCell: data => {
+        if(data.column.index===4 && data.row.index>=0 && data.section==='body') {
+          data.cell.styles.textColor = fuelRows[data.row.index]?.[5] ? green : red;
+          data.cell.styles.fontStyle = 'bold';
+        }
+      }
+    });
+    y = doc.lastAutoTable.finalY + 8;
+
+    // Load table
+    txt2('Obciążenie silnika', m, y, 10, dark, 'left', true); y+=6;
+    const loadSt=v=>v>=.6&&v<=.8?'Optymalne ✅':v<.6?'Poniżej optimum ⬇':'Powyżej ⬆';
+    doc.autoTable({
+      head:[['Stan pracy','Obciążenie','Status']],
+      body:[['Bezczynność',D.load.idle.toFixed(3),loadSt(D.load.idle)],
+            ['Praca',D.load.work.toFixed(3),loadSt(D.load.work)],
+            ['Transport',D.load.trans.toFixed(3),loadSt(D.load.trans)]],
+      startY:y, margin:{left:m,right:m},
+      styles:{fontSize:8,cellPadding:3},
+      headStyles:{fillColor:dark,textColor:[255,255,255],fontStyle:'bold'},
+      alternateRowStyles:{fillColor:light},
+    });
+    y=doc.lastAutoTable.finalY+8;
+
+    // DEF metrics
+    const defItems=[
+      [`${D.def.total.toFixed(1)} l`,'Zużyty płyn DEF'],
+      [`${D.def.rate.toFixed(3)} l/godz.`,'Średnie zużycie DEF'],
+      [`${D.def.level.toFixed(2)}%`,'Poziom w zbiorniku DEF'],
+    ];
+    defItems.forEach(([v,l],i)=>{
+      const x=m+i*cw/3+cw/6;
+      txt2(v,x,y+8,14,dark,'center',true);
+      txt2(l,x,y+14,7,mid,'center');
+    });
+    y+=22;
+
+    // Footer
+    fillRect(0,H-16,W,16,[74,74,74]);
+    txt2('→  napędzamy Twój rozwój!',m,H-7,9,[255,255,255]);
+    txt2('WANICKI',W-m,H-7,10,[255,255,255],'right',true);
+
+    // ━━ PAGE 4: TEMPS & SLIP ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    doc.addPage(); fillRect(0,0,W,H,[255,255,255]);
+    txt2('WANICKI',m,m+5,12,dark,'left',true);
+    y=m+12;
+
+    // Speed metrics
+    txt2(`${D.speed.work.toFixed(1)} km/h`, W*0.17, y+6, 16, dark, 'center', true);
+    txt2('Śr. prędkość pracy', W*0.17, y+12, 7, mid, 'center');
+    txt2(`${D.speed.trans.toFixed(1)} km/h`, W*0.5, y+6, 16, dark, 'center', true);
+    txt2('Śr. prędkość transportu', W*0.5, y+12, 7, mid, 'center');
+    txt2(`${D.speed.fuel10.toFixed(1)} l/10km`, W*0.83, y+6, 16, dark, 'center', true);
+    txt2('Wpływ prędkości na zużycie', W*0.83, y+12, 7, mid, 'center');
+    y+=20; line(m,y,W-m,y,[220,220,220]); y+=6;
+
+    // Temp tables side by side
+    const tempAvg=[['Chłodniczy',D.temps.cool_avg,80,105],['Hydrauliczny',D.temps.hyd_avg,30,95],['Przekładniowy',D.temps.gear_avg,40,60]];
+    const tempMax=[['Chłodniczy',D.temps.cool_max,85,105],['Hydrauliczny',D.temps.hyd_max,70,95],['Przekładniowy',D.temps.gear_max,50,70]];
+
+    txt2('Średnie temperatury płynów (°C)', m, y, 9, dark, 'left', true);
+    doc.autoTable({
+      head:[['Płyn','Min','Temp.','Max','Status']],
+      body: tempAvg.map(([n,v,lo,hi])=>[n,`${lo}°C`,`${v.toFixed(1)}°C`,`${hi}°C`,v>=lo&&v<=hi?'✅ W normie':'⬆ Poza normą']),
+      startY:y+4, margin:{left:m,right:W/2+2},
+      styles:{fontSize:7.5,cellPadding:2.5},
+      headStyles:{fillColor:dark,textColor:[255,255,255],fontStyle:'bold'},
+      alternateRowStyles:{fillColor:light},
+      didParseCell: d=>{ if(d.column.index===4&&d.section==='body') d.cell.styles.textColor=tempAvg[d.row.index]?.[1]>=tempAvg[d.row.index]?.[2]&&tempAvg[d.row.index]?.[1]<=tempAvg[d.row.index]?.[3]?green:red; }
+    });
+
+    txt2('Maksymalne temperatury płynów (°C)', W/2+4, y, 9, dark, 'left', true);
+    doc.autoTable({
+      head:[['Płyn','Min','Temp.','Max','Status']],
+      body: tempMax.map(([n,v,lo,hi])=>[n,`${lo}°C`,`${v.toFixed(1)}°C`,`${hi}°C`,v>=lo&&v<=hi?'✅ W normie':'⬆ Poza normą']),
+      startY:y+4, margin:{left:W/2+4,right:m},
+      styles:{fontSize:7.5,cellPadding:2.5},
+      headStyles:{fillColor:dark,textColor:[255,255,255],fontStyle:'bold'},
+      alternateRowStyles:{fillColor:light},
+      didParseCell: d=>{ if(d.column.index===4&&d.section==='body') d.cell.styles.textColor=tempMax[d.row.index]?.[1]>=tempMax[d.row.index]?.[2]&&tempMax[d.row.index]?.[1]<=tempMax[d.row.index]?.[3]?green:red; }
+    });
+
+    y=doc.lastAutoTable.finalY+10;
+
+    // Slip table
+    txt2('Czas poślizgu kół', m, y, 9, dark, 'left', true); y+=5;
+    const slipTot=D.slip.s201+D.slip.s401+D.slip.s801+D.slip.s1801||1;
+    doc.autoTable({
+      head:[['Poziom poślizgu','Liczba godzin','Procentowy poślizg']],
+      body:[
+        ['2,01–4,00%',   `${D.slip.s201.toFixed(1)} godz.`,  `${(D.slip.s201/slipTot*100).toFixed(1)}%`],
+        ['4,01–8,00%',   `${D.slip.s401.toFixed(1)} godz.`,  `${(D.slip.s401/slipTot*100).toFixed(1)}%`],
+        ['8,01–18,00%',  `${D.slip.s801.toFixed(1)} godz.`,  `${(D.slip.s801/slipTot*100).toFixed(1)}%`],
+        ['18,01–100,00%',`${D.slip.s1801.toFixed(1)} godz.`, `${(D.slip.s1801/slipTot*100).toFixed(1)}%`],
+        ['Suma',         `${(D.slip.s201+D.slip.s401+D.slip.s801+D.slip.s1801).toFixed(1)} godz.`, '100%'],
+      ],
+      startY:y, margin:{left:m,right:W/2+2},
+      styles:{fontSize:8,cellPadding:3},
+      headStyles:{fillColor:dark,textColor:[255,255,255],fontStyle:'bold'},
+      alternateRowStyles:{fillColor:light},
+    });
+
+    // Footer every page
+    [2,3,4].forEach(pg=>{
+      doc.setPage(pg);
+      fillRect(0,H-16,W,16,[74,74,74]);
+      txt2('→  napędzamy Twój rozwój!',m,H-7,9,[255,255,255]);
+      txt2('WANICKI',W-m,H-7,10,[255,255,255],'right',true);
+    });
+
+    // Save
+    const model = D.machine.model.replace(/\s+/g,'_') || 'maszyna';
+    doc.save(`raport_${model}.pdf`);
+    showStatus('✅ PDF pobrany pomyślnie!', 'ok');
+
+  } catch(err) {
+    showStatus('❌ Błąd generowania PDF: ' + err.message, 'err');
+    console.error(err);
+  } finally {
+    btn.disabled=false; spin.style.display='none'; txt.textContent='📄 GENERUJ PDF';
+  }
+}
+</script>
+</body>
+</html>
